@@ -2,28 +2,30 @@ import tkinter as tk
 from tkinter import ttk
 
 class SearchWidget:
-    def __init__(self, root, text_widget):
+    def __init__(self, parent_frame, text_widget):
         self.text_widget = text_widget
+        self.parent_frame = parent_frame
         
         # Create an entry field for entering the commands by the user
         default_sentence = "Search here!" 
-        self.search_entry = ttk.Entry(root, style='Professional.TEntry', width=18, foreground="lightblue", font=("Arial", 12, "bold"))
-        self.search_entry.grid(row=9, column=4, pady=3, padx=1, sticky="sew")
+        self.search_entry = ttk.Entry(parent_frame, style='Professional.TEntry', width=18, foreground="lightblue", font=("Arial", 12, "bold"))
+        self.search_entry.pack(pady=2)
         self.search_entry.insert(0, default_sentence)
         
         # Create a find a keyword
-        search_button = tk.Button(root, text="Find", command=self.search_text)
+        search_button = tk.Button(parent_frame, text="Find", command=self.search_text)
         search_button.configure(relief="flat", background="lightblue", foreground="black", font=("Arial", 12, "bold"))
-        search_button.grid(row=10, column=4, pady=3, padx=1, sticky="new")
+        search_button.pack(pady=2)
         
-        self.result_label = tk.Label(root, text="")
-        self.result_label.grid(row=11, column=4, pady=3, padx=1, sticky="new")
+        self.result_label = tk.Label(parent_frame, text="")
+        self.result_label.pack(pady=2)
         self.result_label.configure(background="white", foreground="black")
 
         # Bind the <Return> key event to the search function
         self.search_entry.bind("<Return>", lambda event: self.search_text())
         
-        # Bind the <Up> and <Down> arrow keys
+        # Bind the <Up> and <Down> arrow keys - need to bind to parent root window
+        root = parent_frame.winfo_toplevel()
         root.bind("<Up>", lambda event: self.prev_occurrence())
         root.bind("<Down>", lambda event: self.next_occurrence())
 

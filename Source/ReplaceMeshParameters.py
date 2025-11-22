@@ -196,15 +196,15 @@ class ReplaceMeshParameters:
         for param, entry_var in self.new_values.items():
             value = entry_var.get()  # gets the new values from the user 
             if value != "":
-                old_pattern = f'{param}\\s*([^;]+);'
-                new_pattern = f'{param} {value};'
+                old_pattern = rf'{param}\s*([^;]+);'
+                new_pattern = rf'{param} {value};'
                 body_content = re.sub(old_pattern, new_pattern, body_content)
 
         # Apply commenting logic
         for param, var in self.comment_vars.items():
             if var.get():
                 # If the checkbutton is checked, comment out the parameter in the file content
-                pattern = f'(?m)^\s*{param}\s+[^;]+;'
+                pattern = rf'(?m)^\s*{param}\s+[^;]+;'
                 replacement = f'// {param} {self.new_values[param].get()};'
                 body_content = re.sub(pattern, replacement, body_content)
 
@@ -231,8 +231,8 @@ class ReplaceMeshParameters:
         for param, entry in self.new_values.items():
             value = new_values[param]  # gets the new values from the user 
             if value != "":
-                old_pattern = f'{param}\\s*([^;]+)'
-                new_pattern = f'{param} {value}'
+                old_pattern = rf'{param}\s*([^;]+)'
+                new_pattern = rf'{param} {value}'
 
                 # Access the entry widget directly from the dictionary
                 entry_widget = self.entry_widgets[param]
@@ -252,7 +252,7 @@ class ReplaceMeshParameters:
             file_content = file.read()
 
         # Replace the old stopAfter value with the new one
-        updated_content = re.sub(r'workflowControl\s*{[^}]*stopAfter\s+\w+;', f'workflowControl\n{{\n    stopAfter {selected_workflow_step};', file_content, flags=re.DOTALL)
+        updated_content = re.sub(r'workflowControl\s*{[^}]*stopAfter\s+\w+;', rf'workflowControl\n{{\n    stopAfter {selected_workflow_step};', file_content, flags=re.DOTALL)
 
         # Write the updated content back to the file
         with open(self.parent.mesh_dict_file_path, 'w') as file:
@@ -274,10 +274,20 @@ class ReplaceMeshParameters:
         target_directory = filedialog.askdirectory(title="Select Folder to Save Mesh")
         if target_directory:  # Proceed only if the user selected a directory
             try:
-                # Assuming self.parent.mesh_dict_file_path points to a file, get the directory containing that file
-                base_directory = os.path.dirname(self.parent.geometry_dest_path)
+                # Use the geometry destination path directly as the base directory
+                base_directory = self.parent.geometry_dest_path
                 # Construct the source directory path to the polyMesh folder
                 source_directory = os.path.join(base_directory, "constant", "polyMesh")
+                
+                # Debug: Check if the source directory exists
+                print(f"Debug: Looking for mesh at: {source_directory}")
+                print(f"Debug: Base directory: {base_directory}")
+                print(f"Debug: Source directory exists: {os.path.exists(source_directory)}")
+                
+                # Check if the source polyMesh directory exists
+                if not os.path.exists(source_directory):
+                    messagebox.showerror("Error", f"Mesh not found at: {source_directory}\n\nPlease generate a mesh first before trying to save it.")
+                    return
                 
                 # Define the destination path including the polyMesh folder name
                 destination_path = os.path.join(target_directory, "polyMesh")
@@ -306,8 +316,10 @@ class ReplaceMeshParameters:
                 tk.messagebox.showerror("Error", "No mesh found to be converted. The 'polyMesh' directory does not exist.")
                 return  # Exit the function
             
-            # Combine the source and command in a single call
-            command = ['bash', '-c', 'source /usr/lib/openfoam/openfoam2306/etc/bashrc && foamMeshToFluent']
+            # Use Docker to run OpenFOAM foamMeshToFluent
+            command = ['docker', 'run', '--rm', '-v', f'{working_directory}:/case', 
+                      '-w', '/case', 'fsys/openfoam4-paraview50-cfmesh:latest', 
+                      'bash', '-c', '. /opt/openfoam4/etc/bashrc && foamMeshToFluent']
             
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=working_directory)
             output, error = process.communicate()
@@ -339,8 +351,10 @@ class ReplaceMeshParameters:
             # Set the working directory to geometry_dest_path
             working_directory = self.parent.geometry_dest_path
 
-            # Ensure the command runs in the correct environment
-            command = ['bash', '-c', 'source /usr/lib/openfoam/openfoam2306/etc/bashrc && improveMeshQuality']
+            # Use Docker to run OpenFOAM improveMeshQuality
+            command = ['docker', 'run', '--rm', '-v', f'{working_directory}:/case', 
+                      '-w', '/case', 'fsys/openfoam4-paraview50-cfmesh:latest', 
+                      'bash', '-c', '. /opt/openfoam4/etc/bashrc && improveMeshQuality']
 
             # Execute the command in the specified directory
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=working_directory)
@@ -578,8 +592,8 @@ class ReplaceMeshParameters:
         
         if user_response:  # If the user clicked 'Yes', proceed with deletion
             try:
-                # Base directory, assuming self.parent.geometry_dest_path gives a valid path
-                base_directory = os.path.dirname(self.parent.geometry_dest_path)
+                # Use the geometry destination path directly as the base directory
+                base_directory = self.parent.geometry_dest_path
 
                 # Path to the polyMesh directory
                 polyMesh_directory = os.path.join(base_directory, "constant", "polyMesh")

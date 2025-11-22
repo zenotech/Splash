@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# Docker-based AllmeshTetrahedral script for macOS
+# Run from this directory
+cd "${0%/*}" || exit 1
+
+# Set the number of utilized cores
+export OMP_NUM_THREADS=4
+
+# Get the current directory (case directory)
+CASE_DIR="$(pwd)"
+
+# Docker OpenFOAM image with cfMesh
+OPENFOAM_IMAGE="fsys/openfoam4-paraview50-cfmesh:latest"
+
+echo "__________________________________________________________________"
+echo
+echo "Starting Docker-based tetrahedral meshing with OpenFOAM..."
+echo "Case directory: $CASE_DIR"
+echo
+
+# Remove old mesh files
+echo "Cleaning up old mesh files..."
+rm -f log.tetraMesh 
+rm -f log.checkMesh 
+rm -f log.foamToVTK
+rm -f log.paraFoam
+rm -rf constant/polyMesh 
+rm -rf VTK
+
+echo "Tetrahedral mesh is being crafted using Docker, please hang on..." 
+echo
+
+# Create mesh using tetraMesh in Docker container
+docker run --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c ". /opt/openfoam4/etc/bashrc && tetraMesh" > log.tetraMesh 2>&1
+
+# Check if meshing was successful
+if [ $? -eq 0 ]; then
+    echo "Tetrahedral mesh is successfully generated!"
+else
+    echo "Error: Tetrahedral meshing failed. Check log.tetraMesh for details."
+    exit 1
+fi
+
+# Extract ClockTime value from log.tetraMesh
+clock_time=$(grep "ClockTime =" log.tetraMesh | awk '{print $7}' | tr -d '[:alpha:]' 2>/dev/null || echo "2")
+sleep_time=$((clock_time + 1))
+if [ $sleep_time -le 1 ]; then
+    sleep_time=3
+fi
+
+sleep $sleep_time
+
+# Convert mesh to VTK format using Docker
+echo "Converting mesh to VTK format..."
+docker run --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c ". /opt/openfoam4/etc/bashrc && foamToVTK" > log.foamToVTK 2>&1
+
+echo "Checking mesh quality..."
+
+# Check mesh quality using Docker
+docker run --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c ". /opt/openfoam4/etc/bashrc && checkMesh" > log.checkMesh 2>&1
+
+echo "Mesh quality checked! Click on 'Load mesh quality' to view the report."
+echo
+echo "__________________________________________________________________"
