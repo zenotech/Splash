@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# Docker-based Dual Mesh script for macOS (ARM64 compatible)
+# Uses standard OpenFOAM snappyHexMesh + polyDualMesh for dual mesh conversion
+# Run from this directory
+cd "${0%/*}" || exit 1
+
+# Set the number of utilized cores
+export OMP_NUM_THREADS=4
+
+# Get the current directory (case directory)
+CASE_DIR="$(pwd)"
+
+# ARM64-compatible OpenFOAM image
+OPENFOAM_IMAGE="openfoam/openfoam11-paraview510:latest"
+
+echo "__________________________________________________________________"
+echo
+echo "Starting Docker-based dual mesh generation with OpenFOAM (ARM64)..."
+echo "Case directory: $CASE_DIR"
+echo
+
+# Remove old mesh files
+echo "Cleaning up old mesh files..."
+rm -f log.blockMesh
+rm -f log.snappyHexMesh
+rm -f log.polyDualMesh
+rm -f log.checkMesh 
+rm -f log.foamToVTK
+rm -f log.paraFoam
+rm -rf constant/polyMesh 
+rm -rf VTK
+
+echo "Dual mesh is being crafted using Docker (blockMesh + snappyHexMesh + polyDualMesh), please hang on..." 
+echo
+
+# Step 1: Create background mesh using blockMesh
+echo "Step 1: Creating background mesh with blockMesh..."
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && blockMesh" > log.blockMesh 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "Error: blockMesh failed. Check log.blockMesh for details."
+    exit 1
+fi
+
+# Step 2: Create refined mesh using snappyHexMesh
+echo "Step 2: Creating refined mesh with snappyHexMesh..."
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && snappyHexMesh -overwrite" > log.snappyHexMesh 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "Error: snappyHexMesh failed. Check log.snappyHexMesh for details."
+    exit 1
+fi
+
+# Step 3: Convert to polyhedral mesh using polyDualMesh
+echo "Step 3: Converting to polyhedral cells with polyDualMesh..."
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && polyDualMesh 89 -overwrite" > log.polyDualMesh 2>&1
+
+# Check if dual mesh generation was successful
+if [ $? -eq 0 ]; then
+    echo "Dual mesh is successfully generated!"
+else
+    echo "Error: Dual mesh generation failed. Check log.polyDualMesh for details."
+    exit 1
+fi
+
+# Extract ClockTime value from log.polyDualMesh
+clock_time=$(grep "ClockTime =" log.polyDualMesh | tail -1 | awk '{print $NF}' | tr -d '[:alpha:]' 2>/dev/null || echo "2")
+sleep_time=$((clock_time + 1))
+if [ $sleep_time -le 1 ]; then
+    sleep_time=3
+fi
+
+sleep $sleep_time
+
+# Convert mesh to VTK format using Docker
+echo "Converting mesh to VTK format..."
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && foamToVTK" > log.foamToVTK 2>&1
+
+echo "Checking mesh quality..."
+
+# Check mesh quality using Docker
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && checkMesh" > log.checkMesh 2>&1
+
+echo "Mesh quality checked! Click on 'Load mesh quality' to view the report."
+echo
+echo "__________________________________________________________________"

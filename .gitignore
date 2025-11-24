@@ -1,0 +1,51 @@
+# OpenFOAM generated mesh files
+Resources/Geometry/Meshing/0/
+Resources/Geometry/Meshing/constant/polyMesh/
+Resources/Geometry/Meshing/VTK/
+Resources/Geometry/Meshing/processor*/
+Resources/Geometry/Meshing/postProcessing/
+
+# OpenFOAM log files
+Resources/Geometry/Meshing/log.*
+*.log
+
+# Compressed mesh files
+*.gz
+
+# Temporary files
+*.tmp
+*.temp
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Application generated files
+*.stl.backup
+test_*.py
+check_bounds.py

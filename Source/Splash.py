@@ -24,9 +24,7 @@ from tkinter.font import Font
 from STLProcessor import STLProcessor
 
 # Importing local classes
-from SearchWidget import SearchWidget  # Import the SearchWidget class from the other file
 from ReplaceProperties import ReplacePropertiesPopup
-from ReplaceMeshParameters import ReplaceMeshParameters
 from ReplaceControlDictParameters import ReplaceControlDictParameters
 from ReplaceSimulationSetupParameters import ReplaceSimulationSetupParameters
 
@@ -54,15 +52,40 @@ class Splash:
         self.root.title("Splash - v0.2")
         
         # Initialize critical parameters first to avoid attribute errors
-        self.mesh_params = ["minCellSize", "maxCellSize", "boundaryCellSize", "nLayers", "optimiseLayer", "untangleLayers", "thicknessRatio", 
-                            "maxFirstLayerThickness", "nSmoothNormals", "maxNumIterations", "featureSizeFactor", "reCalculateNormals", 
-                            "relThicknessTol", "restartFromLatestStep", "enforceGeometryConstraints"]
-        
         self.control_dict_params = ["application", "startFrom", "startTime", "stopAt", "endTime", "deltaT", "writeControl", "writeInterval", 
                                     "purgeWrite", "writeFormat", "writePrecision", "timePrecision", "runTimeModifiable", "maxCo"]
         
         self.geometry_loaded = False
         self.geometry_dest_path = None
+        
+        # Initialize mesh parameters for unified blockMesh + snappyHexMesh workflow
+        self.mesh_params_vars = {
+            # Background mesh (blockMesh) parameters
+            'cells_x': tk.StringVar(value='50'),        # Good balance of resolution vs speed
+            'cells_y': tk.StringVar(value='50'),
+            'cells_z': tk.StringVar(value='50'),
+            
+            # Domain expansion factors
+            'domain_x_factor': tk.StringVar(value='8.0'),   # Flow direction extension
+            'domain_y_factor': tk.StringVar(value='6.0'),   # Cross-flow extension
+            'domain_z_factor': tk.StringVar(value='6.0'),   # Vertical extension
+            
+            # Surface refinement (snappyHexMesh) parameters
+            'surface_refinement_min': tk.StringVar(value='1'),     # Minimum refinement level
+            'surface_refinement_max': tk.StringVar(value='3'),     # Maximum refinement level
+            'feature_edge_level': tk.StringVar(value='2'),         # Edge refinement level
+            'max_global_cells': tk.StringVar(value='10000000'),    # 10M cells safety limit
+            
+            # Quality controls
+            'feature_angle': tk.StringVar(value='30'),             # Feature edge detection angle
+            'snap_tolerance': tk.StringVar(value='2.0'),           # Surface snapping tolerance
+        }
+        
+        # Initialize mouse interaction variables early to prevent AttributeErrors
+        self.mouse_x = 0
+        self.mouse_y = 0
+        self.is_rotating = False
+        self.is_panning = False
         
         # Get the absolute path of the script directory
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -200,8 +223,8 @@ class Splash:
 
         # Status label will be created in setup_status_bar method
         
-        # Create mesh type variable (set it so "Cartesian" as a default)
-        self.mesh_type_var = tk.StringVar(value="Cartesian")
+        # Create mesh type variable (set 'SurfaceConforming' as default - most appropriate for STL geometry)
+        self.mesh_type_var = tk.StringVar(value="SurfaceConforming")
         self.mesh_type = None
         
         # Workflow buttons will be created in setup_workflow_buttons method
@@ -238,8 +261,7 @@ class Splash:
         # Display the main text box widget (create text_box first)
         self.setup_ui()
         
-        # Setup CLI and Search components (moved after setup_ui since they need self.text_box)
-        self.setup_cli_and_search_components()
+        # CLI components now in terminal tab only (Search Console removed)
         
         # Set up visualization control buttons (after text_box is created)
         self.create_interactive_controls()
@@ -265,7 +287,7 @@ class Splash:
         self.visualization_frame = tk.Frame(self.main_container, bg="white", relief=tk.SUNKEN, bd=2)
         self.visualization_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
-        # Middle area: Search and CLI controls (fixed height)
+        # Middle area: VTK visualization controls (fixed height)
         self.controls_frame = tk.Frame(self.main_container, bg="lightsteelblue", height=80, relief=tk.RAISED, bd=1)
         self.controls_frame.pack(fill=tk.X, pady=5)
         self.controls_frame.pack_propagate(False)  # Maintain fixed height
@@ -302,35 +324,24 @@ class Splash:
                         relief='flat',
                         padding=10)
 
-    def setup_cli_and_search_components(self):
-        """Set up Search components in the controls frame (CLI moved to terminal tab)"""
-        # Clear any existing CLI/search sections from controls frame
+    def clear_old_search_components(self):
+        """Clear any existing search components from controls frame"""
         for widget in list(self.controls_frame.winfo_children()):
             if hasattr(widget, 'winfo_class') and widget.winfo_class() == 'Frame':
-                # Check if this frame contains CLI or search controls by looking for specific labels
-                frame_contains_cli_search = False
+                # Check if this frame contains search controls
+                frame_contains_search = False
                 for child in widget.winfo_children():
                     if (hasattr(child, 'cget') and hasattr(child, 'winfo_class') and 
                         child.winfo_class() == 'Label'):
                         try:
                             text = child.cget('text')
-                            if text and ('CLI Command:' in str(text) or 'Search Console:' in str(text)):
-                                frame_contains_cli_search = True
+                            if text and 'Search Console:' in str(text):
+                                frame_contains_search = True
                                 break
                         except:
                             pass
-                if frame_contains_cli_search:
+                if frame_contains_search:
                     widget.destroy()
-        
-        # Search section (centered in controls frame - CLI moved to terminal tab)
-        search_section = tk.Frame(self.controls_frame, bg="lightsteelblue")
-        search_section.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=10)
-        
-        tk.Label(search_section, text="Search Console:", bg="lightsteelblue", 
-                font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        
-        # Create search widget with the search_section as parent
-        self.search_widget = SearchWidget(search_section, self.text_box)
 
     def setup_tabbed_terminal(self):
         """Set up tabbed terminal interface with Docker and Terminal tabs"""
@@ -620,7 +631,7 @@ class Splash:
         self.progress_bar_canvas_flag = True
         
         #----------Text Widget with Scrollbar-----------       
-        # Search widget will be handled in setup_cli_and_search_components
+        # Search Console removed from GUI design
         # self.search_widget = SearchWidget(root, self.text_box)
         
         # Initialize variables for simulation thread
@@ -1352,6 +1363,109 @@ class Splash:
             tk.messagebox.showerror("Error", f"Failed to load geometry: {str(e)}")
             print(f"Geometry loading error: {e}")
     
+    def create_gimbal_lock_free_camera_style(self, renderer):
+        """Create a custom camera interaction style that prevents gimbal lock"""
+        import vtk
+        
+        class GimbalLockFreeCameraStyle(vtk.vtkInteractorStyleTrackballCamera):
+            def __init__(self):
+                super().__init__()
+                self.renderer = None
+                self.last_up_vector = [0, 1, 0]  # Store last valid up vector
+                self.rotation_threshold = 0.99  # Threshold to detect near-gimbal lock
+                
+            def SetRenderer(self, ren):
+                self.renderer = ren
+                
+            def OnMouseMove(self):
+                if not self.renderer:
+                    super().OnMouseMove()
+                    return
+                    
+                # Only apply gimbal lock prevention during rotation
+                if not (self.GetState() == vtk.vtkInteractorStyleTrackballCamera.VTKIS_ROTATE):
+                    super().OnMouseMove()
+                    return
+                    
+                # Get camera before movement
+                camera = self.renderer.GetActiveCamera()
+                old_up = list(camera.GetViewUp())
+                old_pos = list(camera.GetPosition())
+                old_focal = list(camera.GetFocalPoint())
+                
+                # Perform the standard trackball movement
+                super().OnMouseMove()
+                
+                # Check for gimbal lock condition only during rotation
+                new_up = camera.GetViewUp()
+                view_dir = [
+                    old_focal[0] - old_pos[0],
+                    old_focal[1] - old_pos[1], 
+                    old_focal[2] - old_pos[2]
+                ]
+                
+                # Normalize view direction
+                view_length = (view_dir[0]**2 + view_dir[1]**2 + view_dir[2]**2)**0.5
+                if view_length > 1e-10:
+                    view_dir = [v/view_length for v in view_dir]
+                    
+                    # Calculate dot product between view direction and up vector
+                    dot_product = abs(sum(view_dir[i] * new_up[i] for i in range(3)))
+                    
+                    # If we're approaching gimbal lock, constrain the up vector
+                    if dot_product > self.rotation_threshold:
+                        # Use a safe up vector that's perpendicular to view direction
+                        if abs(view_dir[1]) < 0.9:  # If view is not too vertical
+                            safe_up = [0, 1, 0]
+                        else:  # Use Z-up when looking straight up/down
+                            safe_up = [0, 0, 1]
+                            
+                        camera.SetViewUp(safe_up)
+                        self.last_up_vector = safe_up
+                    else:
+                        self.last_up_vector = list(new_up)
+                
+                # Ensure camera is properly orthogonalized only during rotation
+                camera.OrthogonalizeViewUp()
+                
+            def OnLeftButtonDown(self):
+                # Ensure left button works for rotation
+                super().OnLeftButtonDown()
+                
+            def OnLeftButtonUp(self):
+                # Ensure left button up works properly
+                super().OnLeftButtonUp()
+                
+            def OnRightButtonDown(self):
+                # Right button for panning
+                super().OnRightButtonDown()
+                
+            def OnRightButtonUp(self):
+                # Right button up
+                super().OnRightButtonUp()
+                
+            def OnMiddleButtonDown(self):
+                # Middle button for zooming
+                super().OnMiddleButtonDown()
+                
+            def OnMiddleButtonUp(self):
+                # Middle button up
+                super().OnMiddleButtonUp()
+                
+            def OnKeyPress(self):
+                # Ensure keyboard events are passed through
+                super().OnKeyPress()
+                
+            def OnKeyRelease(self):
+                # Ensure keyboard release events are passed through
+                super().OnKeyRelease()
+        
+        # Create and configure the custom style
+        style = GimbalLockFreeCameraStyle()
+        style.SetRenderer(renderer)
+        
+        return style
+
     def display_vtk_free_geometry(self, file_path):
         """Display geometry using embedded interactive 3D viewer in main window"""
         try:
@@ -1866,9 +1980,12 @@ class Splash:
             print(f"Error in panning: {e}")
     
     def on_right_click(self, event):
-        """Handle right click - context menu"""
+        """Handle right click - context menu with zoom controls"""
         try:
             context_menu = tk.Menu(self.root, tearoff=0)
+            context_menu.add_command(label="🔍 Zoom In", command=self.zoom_in)
+            context_menu.add_command(label="🔍 Zoom Out", command=self.zoom_out)
+            context_menu.add_separator()
             context_menu.add_command(label="Reset View", command=self.reset_camera_view)
             context_menu.add_command(label="Toggle Wireframe", command=self.toggle_wireframe_mode)
             context_menu.add_command(label="Toggle Projection", command=self.toggle_projection_mode)
@@ -1882,14 +1999,21 @@ class Splash:
             print(f"Error showing context menu: {e}")
     
     def on_mouse_wheel(self, event):
-        """Handle mouse wheel - zoom"""
+        """Handle mouse wheel - enhanced zoom with better control"""
         try:
-            if hasattr(self, 'renderer'):
+            if hasattr(self, 'renderer') and hasattr(self, 'geometry_loaded') and self.geometry_loaded:
                 camera = self.renderer.GetActiveCamera()
+                
+                # Enhanced zoom factors for smoother control
+                zoom_in_factor = 1.15   # Slightly more aggressive zoom in
+                zoom_out_factor = 0.87  # Slightly more aggressive zoom out
+                
                 if event.delta > 0:
-                    camera.Zoom(1.1)
+                    camera.Zoom(zoom_in_factor)
+                    print("🔍 Zooming in")
                 else:
-                    camera.Zoom(0.9)
+                    camera.Zoom(zoom_out_factor)
+                    print("🔍 Zooming out")
                 
                 # Request a render update
                 self.request_render()
@@ -1898,7 +2022,7 @@ class Splash:
             print(f"Error in zoom: {e}")
     
     def on_key_press(self, event):
-        """Handle keyboard shortcuts"""
+        """Handle keyboard shortcuts with enhanced zoom controls"""
         try:
             if event.keysym == 'r':
                 self.reset_camera_view()
@@ -1908,9 +2032,41 @@ class Splash:
                 self.toggle_projection_mode()
             elif event.keysym == 'f':
                 self.fit_to_window()
+            elif event.keysym == 'plus' or event.keysym == 'equal':
+                # Keyboard zoom in (+/= key)
+                if hasattr(self, 'renderer') and hasattr(self, 'geometry_loaded') and self.geometry_loaded:
+                    self.renderer.GetActiveCamera().Zoom(1.2)
+                    self.request_render()
+                    print("🔍 Keyboard zoom in")
+            elif event.keysym == 'minus':
+                # Keyboard zoom out (- key)
+                if hasattr(self, 'renderer') and hasattr(self, 'geometry_loaded') and self.geometry_loaded:
+                    self.renderer.GetActiveCamera().Zoom(0.8)
+                    self.request_render()
+                    print("🔍 Keyboard zoom out")
                 
         except Exception as e:
             print(f"Error handling key press: {e}")
+    
+    def zoom_in(self):
+        """Programmatic zoom in function"""
+        try:
+            if hasattr(self, 'renderer') and hasattr(self, 'geometry_loaded') and self.geometry_loaded:
+                self.renderer.GetActiveCamera().Zoom(1.2)
+                self.request_render()
+                print("🔍 Zoom in")
+        except Exception as e:
+            print(f"Error zooming in: {e}")
+    
+    def zoom_out(self):
+        """Programmatic zoom out function"""
+        try:
+            if hasattr(self, 'renderer') and hasattr(self, 'geometry_loaded') and self.geometry_loaded:
+                self.renderer.GetActiveCamera().Zoom(0.8)
+                self.request_render()
+                print("🔍 Zoom out")
+        except Exception as e:
+            print(f"Error zooming out: {e}")
     
     def on_canvas_resize(self, event):
         """Handle canvas resize events to update VTK render window size"""
@@ -1980,15 +2136,21 @@ class Splash:
                     center = [center_x, center_y, center_z]
                     distance = max_range * 3.0  # Ensure good viewing distance
                     
-                    # Set camera position for isometric view (avoid gimbal lock)
-                    camera.SetPosition(center[0] + distance * 0.7,
-                                     center[1] + distance * 0.7, 
-                                     center[2] + distance * 0.7)
+                    # Set camera position for isometric view with gimbal lock prevention
+                    # Use slightly off-axis angles to avoid singularities
+                    camera.SetPosition(center[0] + distance * 0.65,
+                                     center[1] + distance * 0.75, 
+                                     center[2] + distance * 0.68)
                     camera.SetFocalPoint(center)
-                    camera.SetViewUp(0, 1, 0)  # Y-up orientation (standard)
                     
-                    # Ensure proper clipping planes
-                    camera.SetClippingRange(distance * 0.1, distance * 10.0)
+                    # Use Z-up with slight Y offset to prevent gimbal lock
+                    camera.SetViewUp(-0.1, 0.1, 1.0)  # Slightly tilted Z-up orientation
+                    
+                    # Ensure proper clipping planes with wider range
+                    camera.SetClippingRange(distance * 0.01, distance * 50.0)
+                    
+                    # Force orthogonalization to prevent drift
+                    camera.OrthogonalizeViewUp()
                 else:
                     # Fallback to renderer reset
                     self.renderer.ResetCamera()
@@ -2021,36 +2183,42 @@ class Splash:
                 center = [mid_x, mid_y, mid_z]
                 distance = max_range * 3.0  # Ensure good viewing distance
                 
-                # Set camera position and view-up vector based on axis
+                # Set camera position and view-up vector with gimbal lock prevention
                 if axis_direction == 'x+':
-                    # View along X+ axis (YZ plane visible)
-                    camera.SetPosition(center[0] + distance, center[1], center[2])
-                    camera.SetViewUp(0, 0, 1)  # Z-up
+                    # View along X+ axis (YZ plane visible) with slight offset
+                    camera.SetPosition(center[0] + distance * 0.98, center[1] + distance * 0.02, center[2] + distance * 0.02)
+                    camera.SetViewUp(0.02, 0.02, 1)  # Slightly tilted Z-up to prevent lock
                     print("📷 View X+ (YZ plane)")
                     
                 elif axis_direction == 'y+':
-                    # View along Y+ axis (XZ plane visible)
-                    camera.SetPosition(center[0], center[1] + distance, center[2])
-                    camera.SetViewUp(0, 0, 1)  # Z-up
+                    # View along Y+ axis (XZ plane visible) with slight offset
+                    camera.SetPosition(center[0] + distance * 0.02, center[1] + distance * 0.98, center[2] + distance * 0.02)
+                    camera.SetViewUp(0.02, 0.02, 1)  # Slightly tilted Z-up to prevent lock
                     print("📷 View Y+ (XZ plane)")
                     
                 elif axis_direction == 'z+':
-                    # View along Z+ axis (XY plane visible)
-                    camera.SetPosition(center[0], center[1], center[2] + distance)
-                    camera.SetViewUp(0, 1, 0)  # Y-up for top view
+                    # View along Z+ axis (XY plane visible) with slight offset
+                    camera.SetPosition(center[0] + distance * 0.02, center[1] + distance * 0.02, center[2] + distance * 0.98)
+                    camera.SetViewUp(0.02, 1, 0.02)  # Slightly tilted Y-up to prevent lock
                     print("📷 View Z+ (XY plane)")
                     
                 elif axis_direction == 'iso':
-                    # Isometric view (45-45-45 degrees)
-                    camera.SetPosition(center[0] + distance * 0.7,
-                                     center[1] + distance * 0.7, 
-                                     center[2] + distance * 0.7)
-                    camera.SetViewUp(0, 0, 1)  # Z-up
+                    # Isometric view with gimbal lock prevention
+                    camera.SetPosition(center[0] + distance * 0.65,
+                                     center[1] + distance * 0.75, 
+                                     center[2] + distance * 0.68)
+                    camera.SetViewUp(-0.1, 0.1, 1.0)  # Tilted Z-up to prevent lock
                     print("📷 Isometric view")
                 
-                # Set focal point and clipping
+                # Set focal point and clipping with gimbal lock prevention
                 camera.SetFocalPoint(center)
-                camera.SetClippingRange(distance * 0.01, distance * 100.0)
+                camera.SetClippingRange(distance * 0.005, distance * 200.0)
+                
+                # Force orthogonalization to prevent view drift and gimbal lock
+                camera.OrthogonalizeViewUp()
+                
+                # Ensure camera parameters are valid
+                camera.Modified()
                 
                 self.request_render()
                 
@@ -2148,10 +2316,10 @@ class Splash:
                 label.bind("<Leave>", on_leave)
                 return label
             
-            # Clear only existing VTK control sections from controls frame  
+            # Clear any existing VTK control frames first
             for widget in list(self.controls_frame.winfo_children()):
                 if hasattr(widget, 'winfo_class') and widget.winfo_class() == 'Frame':
-                    # Check if this frame contains VTK controls by looking for specific labels
+                    # Check if this frame contains VTK controls
                     frame_contains_vtk = False
                     for child in widget.winfo_children():
                         if (hasattr(child, 'cget') and hasattr(child, 'winfo_class') and 
@@ -2166,52 +2334,49 @@ class Splash:
                     if frame_contains_vtk:
                         widget.destroy()
             
-            # Create a horizontal container for VTK control buttons in controls frame
-            vtk_controls_frame = tk.Frame(self.controls_frame, bg="lightsteelblue")
-            vtk_controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=10)
+            # Create a dedicated container for VTK control buttons (no mouse instructions needed)
+            vtk_controls_frame = tk.Frame(self.controls_frame, bg="lightsteelblue", relief="ridge", bd=2)
+            vtk_controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
             
-            tk.Label(vtk_controls_frame, text="3D View Controls:", bg="lightsteelblue", 
-                    font=("Arial", 10, "bold")).pack(anchor=tk.W)
-            
-            # Create button container - single row layout for better visibility
+            # Create button container with more vertical space
             buttons_container = tk.Frame(vtk_controls_frame, bg="lightsteelblue")
-            buttons_container.pack(fill=tk.X, pady=5)
+            buttons_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
             
-            # Create all buttons in a single row for better visibility
+            # Create all buttons in a single row with better spacing and sizing
             
             # Control group - Reset & Wireframe (Blue theme)
             reset_btn = create_button_label(buttons_container, "Reset", "#4472C4", self.reset_camera_view)
-            reset_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            reset_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((reset_btn, 1, True))
             
             wire_btn = create_button_label(buttons_container, "Wire", "#4472C4", self.toggle_wireframe_mode)
-            wire_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            wire_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((wire_btn, 1, False))
             
             # Control group - Projection & Fit (Blue theme)
             proj_btn = create_button_label(buttons_container, "Proj", "#4472C4", self.toggle_projection_mode)
-            proj_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            proj_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((proj_btn, 2, True))
             
             fit_btn = create_button_label(buttons_container, "Fit", "#4472C4", self.fit_to_window)
-            fit_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            fit_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((fit_btn, 2, False))
             
             # Axis group - X+, Y+, Z+ & Isometric (Green theme)
             x_btn = create_button_label(buttons_container, "X+", "#70AD47", lambda: self.set_axis_view('x+'))
-            x_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            x_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((x_btn, 3, True))
             
             y_btn = create_button_label(buttons_container, "Y+", "#70AD47", lambda: self.set_axis_view('y+'))
-            y_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            y_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((y_btn, 3, False))
             
             z_btn = create_button_label(buttons_container, "Z+", "#70AD47", lambda: self.set_axis_view('z+'))
-            z_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            z_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((z_btn, 4, True))
             
             iso_btn = create_button_label(buttons_container, "Iso", "#70AD47", lambda: self.set_axis_view('iso'))
-            iso_btn.pack(side=tk.LEFT, padx=2, pady=2)
+            iso_btn.pack(side=tk.LEFT, padx=3, pady=4)
             self.control_buttons.append((iso_btn, 4, False))
             
             print(f"✅ Interactive controls created ({len(self.control_buttons)} buttons)")
@@ -3686,8 +3851,8 @@ def create_standalone_viewer(stl_file):
         interactor = vtk.vtkRenderWindowInteractor()
         interactor.SetRenderWindow(render_window)
         
-        # Set trackball camera style
-        style = vtk.vtkInteractorStyleTrackballCamera()
+        # Set custom camera style that prevents gimbal lock
+        style = self.create_gimbal_lock_free_camera_style(renderer)
         interactor.SetInteractorStyle(style)
         
         # Add keyboard shortcuts
@@ -4190,75 +4355,29 @@ The main window shows available geometry information."""
         # Ask the user for mesh type using clickable buttons
         self.mesh_type = self.ask_mesh_type()
 
-        if self.mesh_type is not None:
+        if self.mesh_type is None:
+            # User cancelled the dialog
+            return
+            
+        # Generate blockMeshDict based on user parameters
+        if not self.generate_blockmesh_dict():
+            # Error generating blockMeshDict
+            return
 
-            # Define the source directory for Allmesh* files and "system" directory
-            # Get the script's directory (Source) and go up one level to Splash root
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            splash_root = os.path.dirname(script_dir)
-            meshing_directory = os.path.join(splash_root, "Meshing")
-
-
-            # Check if the destination path is the same as the meshing directory
-            if os.path.normpath(self.geometry_dest_path) != os.path.normpath(meshing_directory):
-                all_mesh_files = glob.glob(os.path.join(meshing_directory, "Allmesh*"))
-                
-                for file_path in all_mesh_files:
-                    try:
-                        # Copy each Allmesh* file to the geometry destination path
-                        shutil.copy(file_path, self.geometry_dest_path)
-                    except Exception as e:
-                        messagebox.showerror("Error", f"Failed to copy {file_path}: {e}")
-                
-                # Define the source and destination paths for the "system" directory
-                source_system_directory = os.path.join(meshing_directory, "system")
-                dest_system_directory = os.path.join(self.geometry_dest_path, "system")
-                
-                # Remove the existing "system" directory in the destination if it exists
-                if os.path.exists(dest_system_directory):
-                    shutil.rmtree(dest_system_directory)
-                
-                try:
-                    # Copy the "system" directory to the geometry destination path
-                    shutil.copytree(source_system_directory, dest_system_directory)
-                except Exception as e:
-                    messagebox.showerror("Error", f"Failed to copy 'system' directory: {e}")
-
-            # Read the content of the "meshDict" file
-            self.mesh_dict_file_path = os.path.join(self.geometry_dest_path, "system", "meshDict")
-
-            try:
-                with open(self.mesh_dict_file_path, "r") as mesh_dict_file:
-                    file_content = mesh_dict_file.read()
-                    self.selected_mesh_file_content = file_content
-
-                old_values_mesh = {param: match.group(1) for param in self.mesh_params
-                                   for match in re.finditer(f'{param}\\s+(\\S+)(;|;//.*)', file_content)}
-
-                # Open a popup to replace mesh parameters
-                self.open_replace_mesh_parameters_popup(old_values_mesh)
-
-            except FileNotFoundError:
-                tk.messagebox.showerror("Error", f"File not found - {self.mesh_dict_file_path}")
-            except Exception as e:
-                tk.messagebox.showerror("Error", f"Error reading mesh parameters: {e}")  
-                             
-    def open_replace_mesh_parameters_popup(self, old_values_mesh):
-        if old_values_mesh:
-            # Open a popup to replace mesh parameters
-            ReplaceMeshParameters(self, self.mesh_params, old_values_mesh)
-        else:
-            tk.messagebox.showerror("Error", "No mesh parameters found in the 'meshDict' file!")
-
+        # For blockMesh + snappyHexMesh workflow, we don't need the old cfMesh files or parameter popup
+        # All parameters are handled in the ask_mesh_type() popup and generate_blockmesh_dict()
+        
+        # Start the meshing process directly
+        self.start_meshing()  
     def start_meshing(self):
     
         # Choosing the right Docker-based script based on the selected mesh type
-        if self.mesh_type == "Cartesian":
-            script_name = "AllmeshCartesian_Docker"
-        elif self.mesh_type == "Polyhedral":
-            script_name = "AllmeshPolyhedral_Docker"
-        elif self.mesh_type == "Tetrahedral":
-            script_name = "AllmeshTetrahedral_Docker"
+        if self.mesh_type == "SimpleHex":
+            script_name = "AllmeshSimpleHex_Docker"  # blockMesh only
+        elif self.mesh_type == "SurfaceConforming":
+            script_name = "AllmeshSurfaceConforming_Docker"  # blockMesh + snappyHexMesh
+        elif self.mesh_type == "DualMesh":
+            script_name = "AllmeshDualMesh_Docker"  # blockMesh + snappyHexMesh + polyDualMesh
         else:
             tk.messagebox.showerror("Error", f"Unsupported mesh type: {self.mesh_type_var}")
             return
@@ -4333,23 +4452,796 @@ The main window shows available geometry information."""
     # ______Craft your own mesh with the desired type _______
 
     def ask_mesh_type(self):
-        # Create a popup to ask the user for mesh type
+        """Simplified mesh parameter dialog for blockMesh + snappyHexMesh workflow"""
+        # Create the popup window
         popup = tk.Toplevel(self.root)
-        popup.geometry("250x130")
-
-        # Add clickable buttons for mesh type
-        ttk.Radiobutton(popup, text="Cartesian", variable=self.mesh_type_var, value="Cartesian").pack()
-        ttk.Radiobutton(popup, text="Polyhedral", variable=self.mesh_type_var, value="Polyhedral").pack()
-        ttk.Radiobutton(popup, text="Tetrahedral", variable=self.mesh_type_var, value="Tetrahedral").pack()
-
-        # Add a button to confirm the selection
-        ttk.Button(popup, text="OK", command=popup.destroy).pack()
-
+        popup.title("Mesh Parameters (blockMesh + snappyHexMesh)")
+        popup.geometry("700x750")
+        popup.resizable(True, True)
+        
+        # Configure grid weights
+        popup.grid_rowconfigure(1, weight=1)
+        popup.grid_columnconfigure(0, weight=1)
+        
+        # Title frame
+        title_frame = tk.Frame(popup, bg="navy")
+        title_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        
+        title_label = tk.Label(title_frame, text="🔧 Mesh Generation Parameters", 
+                              font=("Arial", 14, "bold"), fg="white", bg="navy")
+        title_label.pack(pady=10)
+        
+        # Create notebook for organized parameters
+        notebook = ttk.Notebook(popup)
+        notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        
+        # === Background Mesh Tab ===
+        bg_frame = ttk.Frame(notebook)
+        notebook.add(bg_frame, text="Background Mesh")
+        
+        # Background mesh explanation
+        bg_info = tk.LabelFrame(bg_frame, text="📐 Background Mesh (blockMesh)", font=("Arial", 11, "bold"))
+        bg_info.pack(fill='x', padx=10, pady=10)
+        
+        info_text = tk.Text(bg_info, height=4, wrap=tk.WORD, font=("Arial", 9), bg="lightyellow")
+        info_text.pack(fill='x', padx=5, pady=5)
+        info_text.insert(tk.END, "Creates the base rectangular mesh around your geometry. "
+                                 "Higher cell counts = finer resolution but slower meshing. "
+                                 "Typical range: 30-80 cells per direction.")
+        info_text.config(state=tk.DISABLED)
+        
+        # Background mesh controls
+        bg_controls = tk.LabelFrame(bg_frame, text="Mesh Resolution", font=("Arial", 10, "bold"))
+        bg_controls.pack(fill='x', padx=10, pady=5)
+        
+        # Grid for mesh resolution
+        for i, (label, param) in enumerate([("X cells:", 'cells_x'), ("Y cells:", 'cells_y'), ("Z cells:", 'cells_z')]):
+            tk.Label(bg_controls, text=label, font=("Arial", 10)).grid(row=i, column=0, sticky='w', padx=5, pady=3)
+            entry = tk.Entry(bg_controls, textvariable=self.mesh_params_vars[param], width=10, font=("Arial", 10))
+            entry.grid(row=i, column=1, padx=5, pady=3)
+            
+            # Add current total cells display
+            if i == 2:  # After Z cells
+                def update_total():
+                    try:
+                        x = int(self.mesh_params_vars['cells_x'].get())
+                        y = int(self.mesh_params_vars['cells_y'].get())
+                        z = int(self.mesh_params_vars['cells_z'].get())
+                        total = x * y * z
+                        total_label.config(text=f"Total: {total:,} cells")
+                    except:
+                        total_label.config(text="Total: ---")
+                
+                total_label = tk.Label(bg_controls, text="Total: 125,000 cells", font=("Arial", 9), fg="blue")
+                total_label.grid(row=3, column=0, columnspan=2, pady=5)
+                
+                # Bind update function to all entry changes
+                for p in ['cells_x', 'cells_y', 'cells_z']:
+                    self.mesh_params_vars[p].trace_add('write', lambda *args: update_total())
+                update_total()  # Initial call
+        
+        # Domain expansion
+        domain_frame = tk.LabelFrame(bg_frame, text="Domain Size", font=("Arial", 10, "bold"))
+        domain_frame.pack(fill='x', padx=10, pady=5)
+        
+        for i, (label, param) in enumerate([("X factor:", 'domain_x_factor'), ("Y factor:", 'domain_y_factor'), ("Z factor:", 'domain_z_factor')]):
+            tk.Label(domain_frame, text=label, font=("Arial", 10)).grid(row=i, column=0, sticky='w', padx=5, pady=3)
+            tk.Entry(domain_frame, textvariable=self.mesh_params_vars[param], width=10, font=("Arial", 10)).grid(row=i, column=1, padx=5, pady=3)
+        
+        tk.Label(domain_frame, text="Domain = geometry size × factor", font=("Arial", 8), fg="gray").grid(row=3, column=0, columnspan=2, pady=3)
+        
+        # === Surface Refinement Tab ===
+        surf_frame = ttk.Frame(notebook)
+        notebook.add(surf_frame, text="Surface Refinement")
+        
+        # Surface refinement explanation
+        surf_info = tk.LabelFrame(surf_frame, text="🎯 Surface Refinement (snappyHexMesh)", font=("Arial", 11, "bold"))
+        surf_info.pack(fill='x', padx=10, pady=10)
+        
+        surf_text = tk.Text(surf_info, height=4, wrap=tk.WORD, font=("Arial", 9), bg="lightgreen")
+        surf_text.pack(fill='x', padx=5, pady=5)
+        surf_text.insert(tk.END, "Refines mesh near geometry surfaces. Each level halves cell size. "
+                                "Level 0 = background mesh size. Level 3 = background/8 size. "
+                                "Higher levels = finer surface resolution but more cells.")
+        surf_text.config(state=tk.DISABLED)
+        
+        # Surface refinement controls
+        surf_controls = tk.LabelFrame(surf_frame, text="Refinement Levels", font=("Arial", 10, "bold"))
+        surf_controls.pack(fill='x', padx=10, pady=5)
+        
+        tk.Label(surf_controls, text="Surface min level:", font=("Arial", 10)).grid(row=0, column=0, sticky='w', padx=5, pady=3)
+        tk.Entry(surf_controls, textvariable=self.mesh_params_vars['surface_refinement_min'], width=8, font=("Arial", 10)).grid(row=0, column=1, padx=5, pady=3)
+        tk.Label(surf_controls, text="(0-4, start refinement)", font=("Arial", 8), fg="gray").grid(row=0, column=2, sticky='w', padx=5)
+        
+        tk.Label(surf_controls, text="Surface max level:", font=("Arial", 10)).grid(row=1, column=0, sticky='w', padx=5, pady=3)
+        tk.Entry(surf_controls, textvariable=self.mesh_params_vars['surface_refinement_max'], width=8, font=("Arial", 10)).grid(row=1, column=1, padx=5, pady=3)
+        tk.Label(surf_controls, text="(1-5, finest near surface)", font=("Arial", 8), fg="gray").grid(row=1, column=2, sticky='w', padx=5)
+        
+        tk.Label(surf_controls, text="Feature edge level:", font=("Arial", 10)).grid(row=2, column=0, sticky='w', padx=5, pady=3)
+        tk.Entry(surf_controls, textvariable=self.mesh_params_vars['feature_edge_level'], width=8, font=("Arial", 10)).grid(row=2, column=1, padx=5, pady=3)
+        tk.Label(surf_controls, text="(0-4, sharp edge refinement)", font=("Arial", 8), fg="gray").grid(row=2, column=2, sticky='w', padx=5)
+        
+        # Quality controls
+        quality_frame = tk.LabelFrame(surf_frame, text="Quality Controls", font=("Arial", 10, "bold"))
+        quality_frame.pack(fill='x', padx=10, pady=5)
+        
+        tk.Label(quality_frame, text="Max global cells:", font=("Arial", 10)).grid(row=0, column=0, sticky='w', padx=5, pady=3)
+        tk.Entry(quality_frame, textvariable=self.mesh_params_vars['max_global_cells'], width=12, font=("Arial", 10)).grid(row=0, column=1, padx=5, pady=3)
+        tk.Label(quality_frame, text="(safety limit)", font=("Arial", 8), fg="gray").grid(row=0, column=2, sticky='w', padx=5)
+        
+        tk.Label(quality_frame, text="Feature angle (°):", font=("Arial", 10)).grid(row=1, column=0, sticky='w', padx=5, pady=3)
+        tk.Entry(quality_frame, textvariable=self.mesh_params_vars['feature_angle'], width=8, font=("Arial", 10)).grid(row=1, column=1, padx=5, pady=3)
+        tk.Label(quality_frame, text="(edge detection threshold)", font=("Arial", 8), fg="gray").grid(row=1, column=2, sticky='w', padx=5)
+        
+        tk.Label(quality_frame, text="Snap tolerance:", font=("Arial", 10)).grid(row=2, column=0, sticky='w', padx=5, pady=3)
+        tk.Entry(quality_frame, textvariable=self.mesh_params_vars['snap_tolerance'], width=8, font=("Arial", 10)).grid(row=2, column=1, padx=5, pady=3)
+        tk.Label(quality_frame, text="(surface fitting accuracy)", font=("Arial", 8), fg="gray").grid(row=2, column=2, sticky='w', padx=5)
+        
+        # === Quick Presets ===
+        preset_frame = tk.LabelFrame(popup, text="Quick Presets", font=("Arial", 9, "bold"))
+        preset_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
+        
+        def load_preset(preset_name):
+            """Load predefined parameter presets"""
+            if preset_name == "fast":
+                self.mesh_params_vars['cells_x'].set('30')
+                self.mesh_params_vars['cells_y'].set('30')
+                self.mesh_params_vars['cells_z'].set('30')
+                self.mesh_params_vars['surface_refinement_max'].set('2')
+            elif preset_name == "balanced":
+                self.mesh_params_vars['cells_x'].set('50')
+                self.mesh_params_vars['cells_y'].set('50')
+                self.mesh_params_vars['cells_z'].set('50')
+                self.mesh_params_vars['surface_refinement_max'].set('3')
+            elif preset_name == "fine":
+                self.mesh_params_vars['cells_x'].set('80')
+                self.mesh_params_vars['cells_y'].set('80')
+                self.mesh_params_vars['cells_z'].set('80')
+                self.mesh_params_vars['surface_refinement_max'].set('4')
+        
+        tk.Button(preset_frame, text="🚀 Fast", command=lambda: load_preset("fast"), 
+                 bg="lightgreen", font=("Arial", 9)).pack(side='left', padx=5, pady=5)
+        tk.Button(preset_frame, text="⚖️ Balanced", command=lambda: load_preset("balanced"), 
+                 bg="lightyellow", font=("Arial", 9)).pack(side='left', padx=5, pady=5)
+        tk.Button(preset_frame, text="🎯 Fine", command=lambda: load_preset("fine"), 
+                 bg="lightcoral", font=("Arial", 9)).pack(side='left', padx=5, pady=5)
+        
+        # === Action Buttons ===
+        button_frame = tk.Frame(popup)
+        button_frame.grid(row=3, column=0, pady=15)
+        
+        # Helper functions
+        def detect_bounds():
+            """Detect STL bounds and suggest optimal parameters"""
+            self.detect_stl_bounds(popup)
+        
+        def generate_mesh():
+            """Generate mesh with current parameters"""
+            try:
+                # Validate parameters
+                cells_x = int(self.mesh_params_vars['cells_x'].get())
+                cells_y = int(self.mesh_params_vars['cells_y'].get())
+                cells_z = int(self.mesh_params_vars['cells_z'].get())
+                
+                if cells_x < 10 or cells_y < 10 or cells_z < 10:
+                    tk.messagebox.showwarning("Parameter Warning", "Very low cell count may result in poor mesh quality.")
+                elif cells_x > 200 or cells_y > 200 or cells_z > 200:
+                    tk.messagebox.showwarning("Parameter Warning", "Very high cell count may take a long time to mesh.")
+                
+                total_cells = cells_x * cells_y * cells_z
+                print(f"🔧 Using unified blockMesh + snappyHexMesh workflow")
+                print(f"📊 Background mesh: {cells_x}×{cells_y}×{cells_z} = {total_cells:,} cells")
+                print(f"🎯 Surface refinement: levels {self.mesh_params_vars['surface_refinement_min'].get()}-{self.mesh_params_vars['surface_refinement_max'].get()}")
+                
+                # Set mesh type to SurfaceConforming (unified workflow)
+                self.mesh_type_var.set("SurfaceConforming")
+                popup.destroy()
+                
+            except ValueError:
+                tk.messagebox.showerror("Invalid Input", "Please enter valid numbers for all parameters.")
+        
+        def cancel_action():
+            """Cancel mesh creation"""
+            self.cancel_mesh_dialog(popup)
+        
+        # Main action buttons
+        ttk.Button(button_frame, text="🔍 Detect STL Bounds", command=detect_bounds).pack(side='left', padx=8)
+        ttk.Button(button_frame, text="⚡ Generate Mesh", command=generate_mesh).pack(side='left', padx=8)
+        ttk.Button(button_frame, text="❌ Cancel", command=cancel_action).pack(side='left', padx=8)
+        
         # Wait for the popup to be closed
         self.root.wait_window(popup)
 
-        # Return the selected mesh type
-        return self.mesh_type_var.get()
+        # Return the selected mesh type if not cancelled
+        if hasattr(self, '_mesh_cancelled') and self._mesh_cancelled:
+            return None
+        return "SurfaceConforming"  # Always use unified workflow
+    
+    def cancel_mesh_dialog(self, popup):
+        """Handle mesh dialog cancellation"""
+        self._mesh_cancelled = True
+        popup.destroy()
+        
+    def detect_stl_bounds(self, popup):
+        """Detect and display STL geometry bounds"""
+        if not self.geometry_loaded or not self.geometry_dest_path:
+            tk.messagebox.showwarning("No STL", "Please load an STL file first!")
+            return
+            
+        try:
+            # Find the STL file in the meshing directory (should be CAD.stl)
+            stl_file_path = os.path.join(self.geometry_dest_path, "CAD.stl")
+            print(f"🔍 Looking for STL at: {stl_file_path}")
+            if not os.path.exists(stl_file_path):
+                tk.messagebox.showwarning("STL Not Found", f"STL file not found at {stl_file_path}")
+                return
+                
+            # Read STL file and get bounds
+            import vtk
+            reader = vtk.vtkSTLReader()
+            reader.SetFileName(stl_file_path)
+            reader.Update()
+            
+            polydata = reader.GetOutput()
+            bounds = polydata.GetBounds()  # (xmin, xmax, ymin, ymax, zmin, zmax)
+            print(f"📐 Raw VTK bounds: {bounds}")
+            
+            # Calculate dimensions
+            x_size = bounds[1] - bounds[0]
+            y_size = bounds[3] - bounds[2] 
+            z_size = bounds[5] - bounds[4]
+            print(f"📏 Calculated sizes: X={x_size:.6f}, Y={y_size:.6f}, Z={z_size:.6f}")
+            
+            # Update bounds info label (if it exists in the dialog)
+            bounds_text = f"STL Bounds: X=[{bounds[0]:.3f}, {bounds[1]:.3f}] ({x_size:.3f})\n"
+            bounds_text += f"           Y=[{bounds[2]:.3f}, {bounds[3]:.3f}] ({y_size:.3f})\n"
+            bounds_text += f"           Z=[{bounds[4]:.3f}, {bounds[5]:.3f}] ({z_size:.3f})"
+            print(f"📝 Setting label text to:\n{bounds_text}")
+            
+            # Update bounds label if it exists (for backward compatibility with old dialogs)
+            if hasattr(self, 'bounds_info_label') and self.bounds_info_label:
+                self.bounds_info_label.config(text=bounds_text, fg="black")
+            else:
+                # For new simplified dialog, show bounds info in a message box
+                tk.messagebox.showinfo("STL Bounds Detected", 
+                    f"Geometry Analysis:\n\n{bounds_text}\n\n"
+                    f"Max dimension: {max(x_size, y_size, z_size):.3f}m\n"
+                    f"Recommended mesh resolution has been applied.")
+            
+            # Store bounds for mesh generation
+            self.stl_bounds = bounds
+            print(f"💾 Stored bounds: {self.stl_bounds}")
+            
+            # Suggest reasonable mesh resolution based on geometry size (but don't downgrade quality)
+            max_size = max(x_size, y_size, z_size)
+            
+            # Get current resolution
+            current_x = int(self.mesh_params_vars['cells_x'].get())
+            current_y = int(self.mesh_params_vars['cells_y'].get())
+            current_z = int(self.mesh_params_vars['cells_z'].get())
+            current_total = current_x * current_y * current_z
+            
+            # Calculate suggested resolution based on geometry size
+            if max_size > 1.0:  # Large geometry (>1m)
+                suggested_cells = 40
+            elif max_size > 0.1:  # Medium geometry (>10cm)
+                suggested_cells = 50  
+            elif max_size > 0.01:  # Small geometry (>1cm)
+                suggested_cells = 60
+            else:  # Very small geometry (<1cm)
+                suggested_cells = 80
+                
+            suggested_total = suggested_cells ** 3
+            
+            # Only suggest if it's different AND provides meaningful guidance
+            if abs(current_total - suggested_total) > 10000:  # Significant difference
+                if suggested_total < current_total:
+                    # Suggesting coarser mesh
+                    suggestion_message = f"STL bounds detected successfully!\n\nCurrent mesh resolution: {current_x}×{current_y}×{current_z} = {current_total:,} cells\nSuggested (for faster meshing): {suggested_cells}×{suggested_cells}×{suggested_cells} = {suggested_total:,} cells\n\n⚠️  This suggestion uses FEWER cells for faster meshing, but may reduce accuracy.\n\nWould you like to use the coarser mesh?"
+                else:
+                    # Suggesting finer mesh
+                    suggestion_message = f"STL bounds detected successfully!\n\nCurrent mesh resolution: {current_x}×{current_y}×{current_z} = {current_total:,} cells\nSuggested (for better accuracy): {suggested_cells}×{suggested_cells}×{suggested_cells} = {suggested_total:,} cells\n\n✅ This suggestion uses MORE cells for better accuracy.\n\nWould you like to use the finer mesh?"
+            
+                if tk.messagebox.askyesno("Mesh Resolution Suggestion", suggestion_message):
+                    # User chose to apply suggestion
+                    self.mesh_params_vars['cells_x'].set(str(suggested_cells))
+                    self.mesh_params_vars['cells_y'].set(str(suggested_cells))
+                    self.mesh_params_vars['cells_z'].set(str(suggested_cells))
+                    print(f"📋 Applied suggested mesh resolution: {suggested_cells}×{suggested_cells}×{suggested_cells}")
+                else:
+                    print(f"📋 Keeping current mesh resolution: {current_x}×{current_y}×{current_z}")
+            else:
+                # Current resolution is appropriate
+                tk.messagebox.showinfo("STL Bounds Detected", f"STL bounds detected successfully!\n\nCurrent mesh resolution ({current_x}×{current_y}×{current_z} = {current_total:,} cells) is appropriate for this geometry size.")
+                print(f"📋 Mesh resolution already optimal: {current_x}×{current_y}×{current_z}")
+            
+        except Exception as e:
+            print(f"❌ Error in detect_stl_bounds: {e}")
+            import traceback
+            traceback.print_exc()
+            tk.messagebox.showerror("Error", f"Failed to analyze STL file: {e}")
+            
+    def generate_blockmesh_dict(self):
+        """Generate blockMeshDict based on STL bounds and user parameters"""
+        # Debug: Check current mesh parameter values
+        print(f"🔧 DEBUG: Current mesh parameters at generation:")
+        try:
+            cells_x_val = self.mesh_params_vars['cells_x'].get() 
+            cells_y_val = self.mesh_params_vars['cells_y'].get()
+            cells_z_val = self.mesh_params_vars['cells_z'].get()
+            total_cells = int(cells_x_val) * int(cells_y_val) * int(cells_z_val)
+            print(f"   📊 Mesh resolution: {cells_x_val} × {cells_y_val} × {cells_z_val} = {total_cells:,} cells")
+            for key, var in self.mesh_params_vars.items():
+                print(f"   {key}: {var.get()}")
+        except Exception as e:
+            print(f"   ❌ Error reading parameters: {e}")
+            
+        if not hasattr(self, 'stl_bounds'):
+            # Use default bounds if STL not analyzed
+            bounds = [-1, 1, -1, 1, -1, 1]
+            tk.messagebox.showwarning("No STL Analysis", "Using default domain bounds. Consider analyzing STL first.")
+        else:
+            bounds = self.stl_bounds
+            
+        # Get user parameters
+        try:
+            x_factor = float(self.mesh_params_vars['domain_x_factor'].get())
+            y_factor = float(self.mesh_params_vars['domain_y_factor'].get()) 
+            z_factor = float(self.mesh_params_vars['domain_z_factor'].get())
+            
+            cells_x = int(self.mesh_params_vars['cells_x'].get())
+            cells_y = int(self.mesh_params_vars['cells_y'].get())
+            cells_z = int(self.mesh_params_vars['cells_z'].get())
+        except ValueError as e:
+            tk.messagebox.showerror("Invalid Input", f"Please check your numeric inputs: {e}")
+            return False
+            
+        # Calculate expanded domain bounds
+        x_center = (bounds[0] + bounds[1]) / 2
+        y_center = (bounds[2] + bounds[3]) / 2
+        z_center = (bounds[4] + bounds[5]) / 2
+        
+        x_size = (bounds[1] - bounds[0]) * x_factor / 2
+        y_size = (bounds[3] - bounds[2]) * y_factor / 2
+        z_size = (bounds[5] - bounds[4]) * z_factor / 2
+        
+        # Domain vertices
+        xmin = x_center - x_size
+        xmax = x_center + x_size
+        ymin = y_center - y_size
+        ymax = y_center + y_size
+        zmin = z_center - z_size
+        zmax = z_center + z_size
+        
+        # Generate blockMeshDict content
+        blockmesh_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     | Version:  11                                   |
+|   \\\\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\\\/     M anipulation  |                                                 |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{{
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Auto-generated blockMeshDict from STL bounds
+// Original STL bounds: X=[{bounds[0]:.3f}, {bounds[1]:.3f}], Y=[{bounds[2]:.3f}, {bounds[3]:.3f}], Z=[{bounds[4]:.3f}, {bounds[5]:.3f}]
+// Domain expansion factors: X={x_factor}, Y={y_factor}, Z={z_factor}
+
+convertToMeters 1;
+
+vertices
+(
+    ({xmin:.6f} {ymin:.6f} {zmin:.6f})  // 0
+    ({xmax:.6f} {ymin:.6f} {zmin:.6f})  // 1
+    ({xmax:.6f} {ymax:.6f} {zmin:.6f})  // 2
+    ({xmin:.6f} {ymax:.6f} {zmin:.6f})  // 3
+    ({xmin:.6f} {ymin:.6f} {zmax:.6f})  // 4
+    ({xmax:.6f} {ymin:.6f} {zmax:.6f})  // 5
+    ({xmax:.6f} {ymax:.6f} {zmax:.6f})  // 6
+    ({xmin:.6f} {ymax:.6f} {zmax:.6f})  // 7
+);
+
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) ({cells_x} {cells_y} {cells_z}) simpleGrading (1 1 1)
+);
+
+edges
+(
+);
+
+boundary
+(
+    inlet
+    {{
+        type patch;
+        faces
+        (
+            (0 4 7 3)  // -X face
+        );
+    }}
+    
+    outlet
+    {{
+        type patch;
+        faces
+        (
+            (2 6 5 1)  // +X face
+        );
+    }}
+    
+    walls
+    {{
+        type wall;
+        faces
+        (
+            (0 3 2 1)  // -Z face (bottom)
+            (4 5 6 7)  // +Z face (top)
+            (1 5 4 0)  // -Y face
+            (3 7 6 2)  // +Y face
+        );
+    }}
+);
+
+mergePatchPairs
+(
+);
+
+// ************************************************************************* //"""
+        
+        # Write blockMeshDict file and setup triSurface directory
+        try:
+            if not hasattr(self, 'geometry_dest_path') or not self.geometry_dest_path:
+                tk.messagebox.showerror("Error", "Geometry path not set!")
+                return False
+                
+            print(f"🔧 Using geometry_dest_path: {self.geometry_dest_path}")
+                
+            # Create system directory in meshing folder
+            system_dir = os.path.join(self.geometry_dest_path, "system")
+            print(f"📁 Creating system directory: {system_dir}")
+            os.makedirs(system_dir, exist_ok=True)
+            
+            # Create constant/triSurface directory for snappyHexMesh
+            trisurface_dir = os.path.join(self.geometry_dest_path, "constant", "triSurface")
+            print(f"📁 Creating triSurface directory: {trisurface_dir}")
+            os.makedirs(trisurface_dir, exist_ok=True)
+            
+            # Copy STL file to triSurface directory for snappyHexMesh
+            stl_source = os.path.join(self.geometry_dest_path, "CAD.stl")
+            stl_dest = os.path.join(trisurface_dir, "CAD.stl")
+            print(f"📄 Copying STL from {stl_source} to {stl_dest}")
+            if os.path.exists(stl_source):
+                shutil.copy2(stl_source, stl_dest)
+            
+            # Write blockMeshDict
+            blockmesh_path = os.path.join(system_dir, "blockMeshDict")
+            print(f"📝 Writing blockMeshDict to: {blockmesh_path}")
+            try:
+                with open(blockmesh_path, 'w') as f:
+                    f.write(blockmesh_content)
+                print(f"✅ Successfully wrote blockMeshDict ({len(blockmesh_content)} bytes)")
+                
+                # Verify file was actually written
+                if os.path.exists(blockmesh_path):
+                    file_size = os.path.getsize(blockmesh_path)
+                    print(f"🔍 Verified: blockMeshDict exists with size {file_size} bytes")
+                else:
+                    print(f"❌ ERROR: blockMeshDict was not created at {blockmesh_path}")
+                    
+            except Exception as e:
+                print(f"❌ ERROR writing blockMeshDict: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Generate snappyHexMeshDict with appropriate locationInMesh point
+            # For external flow CFD, place locationInMesh point DEFINITIVELY OUTSIDE the geometry
+            # This ensures the point is in the fluid domain, not inside the solid geometry
+            
+            # Calculate geometry dimensions and center
+            geometry_length_x = bounds[1] - bounds[0]
+            geometry_length_y = bounds[3] - bounds[2] 
+            geometry_length_z = bounds[5] - bounds[4]
+            
+            # Place locationInMesh point far from geometry to avoid mesh refinement zones
+            # Must be far enough away that local mesh cells are large enough to contain the point
+            # Critical: distance must be >> max refinement level * base cell size
+            
+            # Calculate base mesh cell size using actual mesh resolution
+            base_cell_x = (xmax - xmin) / cells_x  # Actual cells in X direction
+            base_cell_y = (ymax - ymin) / cells_y  # Actual cells in Y direction  
+            base_cell_z = (zmax - zmin) / cells_z  # Actual cells in Z direction
+            max_base_cell = max(base_cell_x, base_cell_y, base_cell_z)
+            
+            # SnappyHexMesh typically uses 3-4 levels of refinement near surfaces
+            # With 4 levels: cell size = base_cell / 2^4 = base_cell / 16
+            # Point must be > 5x refined cell size away from geometry (more reasonable)
+            min_safe_distance = max_base_cell / 16 * 5.0  # 5x refined cell size
+            
+            # Alternative approach: Place point at domain boundaries far from geometry
+            domain_x_size = xmax - xmin
+            domain_y_size = ymax - ymin
+            domain_z_size = zmax - zmin
+            
+            # Place point at corner opposite to geometry center
+            geom_center_x = (bounds[0] + bounds[1]) / 2
+            geom_center_y = (bounds[2] + bounds[3]) / 2
+            geom_center_z = (bounds[4] + bounds[5]) / 2
+            
+            # Choose domain corner farthest from geometry center
+            if geom_center_x < (xmin + xmax) / 2:
+                location_x = xmax - domain_x_size * 0.1  # Far downstream
+            else:
+                location_x = xmin + domain_x_size * 0.1  # Far upstream
+                
+            if geom_center_y < (ymin + ymax) / 2:
+                location_y = ymax - domain_y_size * 0.1  # Top side
+            else:
+                location_y = ymin + domain_y_size * 0.1  # Bottom side
+                
+            if geom_center_z < (zmin + zmax) / 2:
+                location_z = zmax - domain_z_size * 0.1  # Top
+            else:
+                location_z = zmin + domain_z_size * 0.1  # Bottom
+            
+            print(f"🎯 LocationInMesh (fluid point): ({location_x:.6f}, {location_y:.6f}, {location_z:.6f})")
+            print(f"📐 Domain bounds: X=[{xmin:.3f}, {xmax:.3f}], Y=[{ymin:.3f}, {ymax:.3f}], Z=[{zmin:.3f}, {zmax:.3f}]")
+            print(f"🏗️ Geometry bounds: X=[{bounds[0]:.3f}, {bounds[1]:.3f}], Y=[{bounds[2]:.3f}, {bounds[3]:.3f}], Z=[{bounds[4]:.3f}, {bounds[5]:.3f}]")
+            print(f"📏 Base mesh cell size: {max_base_cell:.6f}m (safe distance: {min_safe_distance:.6f}m)")
+            
+            # Verify point is far from geometry
+            dist_to_geom_x = min(abs(location_x - bounds[0]), abs(location_x - bounds[1]))
+            dist_to_geom_y = min(abs(location_y - bounds[2]), abs(location_y - bounds[3]))
+            dist_to_geom_z = min(abs(location_z - bounds[4]), abs(location_z - bounds[5]))
+            min_dist_to_geom = min(dist_to_geom_x, dist_to_geom_y, dist_to_geom_z)
+            
+            print(f"🔍 Minimum distance to geometry: {min_dist_to_geom:.6f}m (should be >> {max_base_cell/16:.6f}m)")
+            
+            if min_dist_to_geom < min_safe_distance:
+                print(f"⚠️  WARNING: Point may be too close to geometry for refined mesh!")
+            else:
+                print(f"✅ Point is safely positioned for external flow meshing")
+            
+            # Copy and update snappyHexMeshDict with user-specified refinement parameters
+            snappy_source = os.path.join(os.path.dirname(__file__), "../Resources/Geometry/Meshing/system/snappyHexMeshDict")
+            snappy_dest = os.path.join(system_dir, "snappyHexMeshDict")
+            print(f"📄 Copying snappyHexMeshDict from {snappy_source} to {snappy_dest}")
+            
+            # Get surface refinement parameters from user interface
+            try:
+                surface_min = int(self.mesh_params_vars['surface_refinement_min'].get())
+                surface_max = int(self.mesh_params_vars['surface_refinement_max'].get())
+                feature_level = int(self.mesh_params_vars['feature_edge_level'].get())
+                max_cells = int(self.mesh_params_vars['max_global_cells'].get())
+                feature_angle = float(self.mesh_params_vars['feature_angle'].get())
+                snap_tolerance = float(self.mesh_params_vars['snap_tolerance'].get())
+                
+                print(f"🎯 Using surface refinement: levels ({surface_min} {surface_max})")
+                print(f"🔧 Feature edge refinement: level {feature_level}")
+                print(f"⚙️ Max cells: {max_cells:,}, Feature angle: {feature_angle}°, Snap tolerance: {snap_tolerance}")
+            except ValueError as e:
+                print(f"⚠️ Error parsing refinement parameters: {e}, using defaults")
+                surface_min, surface_max = 1, 3
+                feature_level = 2
+                max_cells = 10000000
+                feature_angle = 30.0
+                snap_tolerance = 2.0
+            
+            if os.path.exists(snappy_source):
+                with open(snappy_source, 'r') as f:
+                    snappy_content = f.read()
+                
+                # Update locationInMesh with calculated point
+                snappy_content = snappy_content.replace(
+                    "locationInMesh (0.01 0.01 0.01);",
+                    f"locationInMesh ({location_x:.6f} {location_y:.6f} {location_z:.6f});"
+                )
+                
+                # Update surface refinement levels
+                import re
+                snappy_content = re.sub(
+                    r'level \(\d+ \d+\);',
+                    f'level ({surface_min} {surface_max});',
+                    snappy_content
+                )
+                
+                # Update max global cells
+                snappy_content = re.sub(
+                    r'maxGlobalCells\s+\d+;',
+                    f'maxGlobalCells {max_cells};',
+                    snappy_content
+                )
+                
+                # Update feature angle
+                snappy_content = re.sub(
+                    r'resolveFeatureAngle\s+[\d.]+;',
+                    f'resolveFeatureAngle {feature_angle};',
+                    snappy_content
+                )
+                
+                # Update snap tolerance
+                snappy_content = re.sub(
+                    r'tolerance\s+[\d.]+;',
+                    f'tolerance {snap_tolerance};',
+                    snappy_content
+                )
+                
+                try:
+                    with open(snappy_dest, 'w') as f:
+                        f.write(snappy_content)
+                        
+                    print(f"✅ Successfully wrote snappyHexMeshDict ({len(snappy_content)} bytes)")
+                    print(f"🎯 Applied refinement levels ({surface_min} {surface_max}) and quality controls")
+                    
+                    # Verify file was actually written
+                    if os.path.exists(snappy_dest):
+                        file_size = os.path.getsize(snappy_dest)
+                        print(f"🔍 Verified: snappyHexMeshDict exists with size {file_size} bytes")
+                    else:
+                        print(f"❌ ERROR: snappyHexMeshDict was not created at {snappy_dest}")
+                        
+                except Exception as e:
+                    print(f"❌ ERROR writing snappyHexMeshDict: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"❌ snappyHexMeshDict template not found at: {snappy_source}")
+                # Create a customized snappyHexMeshDict with user parameters if template doesn't exist
+                snappy_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+  =========                 |
+  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\\\    /   O peration     | Website:  https://openfoam.org
+    \\\\  /    A nd           | Version:  11
+     \\\\/     M anipulation  |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{{
+    format      ascii;
+    class       dictionary;
+    object      snappyHexMeshDict;
+}}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// Auto-generated with user parameters: 
+// Surface refinement: ({surface_min} {surface_max})
+// Feature edge level: {feature_level}
+// Max cells: {max_cells:,}
+
+castellatedMesh true;
+snap            true;
+addLayers       false;
+
+geometry
+{{
+    CAD.stl
+    {{
+        type triSurfaceMesh;
+        file "CAD.stl";
+    }}
+}}
+
+castellatedMeshControls
+{{
+    maxLocalCells 100000000;
+    maxGlobalCells {max_cells};
+    minRefinementCells 10;
+    maxLoadUnbalance 0.10;
+    nCellsBetweenLevels 3;
+    resolveFeatureAngle {feature_angle};
+
+    features ();
+
+    refinementSurfaces
+    {{
+        CAD.stl
+        {{
+            level ({surface_min} {surface_max});
+            patchInfo
+            {{
+                type wall;
+            }}
+        }}
+    }}
+
+    refinementRegions
+    {{
+    }}
+
+    locationInMesh ({location_x:.6f} {location_y:.6f} {location_z:.6f});
+
+    allowFreeStandingZoneFaces false;
+}}
+
+snapControls
+{{
+    nSmoothPatch 3;
+    tolerance {snap_tolerance};
+    nSolveIter 30;
+    nRelaxIter 5;
+    nFeatureSnapIter 10;
+    implicitFeatureSnap false;
+    explicitFeatureSnap true;
+    multiRegionFeatureSnap false;
+}}
+
+addLayersControls
+{{
+    relativeSizes true;
+    layers {{}}
+    expansionRatio 1.0;
+    finalLayerThickness 0.3;
+    minThickness 0.1;
+    nGrow 0;
+    featureAngle 60;
+    slipFeatureAngle 30;
+    nRelaxIter 3;
+    nSmoothSurfaceNormals 1;
+    nSmoothNormals 3;
+    nSmoothThickness 10;
+    maxFaceThicknessRatio 0.5;
+    maxThicknessToMedialRatio 0.3;
+    minMedianAxisAngle 90;
+    nBufferCellsNoExtrude 0;
+    nLayerIter 50;
+}}
+
+meshQualityControls
+{{
+    maxNonOrtho 65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave 80;
+    minFlatness 0.5;
+    minVol 1e-13;
+    minTetQuality 1e-9;
+    minArea -1;
+    minTwist 0.02;
+    minDeterminant 0.001;
+    minFaceWeight 0.02;
+    minVolRatio 0.01;
+    minTriangleTwist -1;
+    nSmoothScale 4;
+    errorReduction 0.75;
+    relaxed {{ maxNonOrtho 75; }}
+}}
+
+writeFlags (scalarLevels layerSets layerFields);
+mergeTolerance 1e-6;
+// ************************************************************************* //"""
+                
+                try:
+                    with open(snappy_dest, 'w') as f:
+                        f.write(snappy_content)
+                    print(f"✅ Created customized snappyHexMeshDict ({len(snappy_content)} bytes)")
+                    print(f"🎯 Applied user refinement levels ({surface_min} {surface_max}) and controls")
+                    
+                    # Verify file was actually written
+                    if os.path.exists(snappy_dest):
+                        file_size = os.path.getsize(snappy_dest)
+                        print(f"🔍 Verified: customized snappyHexMeshDict exists with size {file_size} bytes")
+                    else:
+                        print(f"❌ ERROR: customized snappyHexMeshDict was not created at {snappy_dest}")
+                        
+                    print(f"Generated snappyHexMeshDict with locationInMesh: ({location_x:.3f}, {location_y:.3f}, {location_z:.3f})")
+                except Exception as e:
+                    print(f"❌ ERROR writing customized snappyHexMeshDict: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+            print(f"Generated blockMeshDict with domain: [{xmin:.3f}, {xmax:.3f}] x [{ymin:.3f}, {ymax:.3f}] x [{zmin:.3f}, {zmax:.3f}]")
+            print(f"Mesh resolution: {cells_x} x {cells_y} x {cells_z} = {cells_x*cells_y*cells_z:,} cells")
+            print(f"STL copied to triSurface directory for snappyHexMesh")
+            
+            return True
+            
+        except Exception as e:
+            tk.messagebox.showerror("Error", f"Failed to generate mesh configuration: {e}")
+            return False
         
     # Decoration function for CAD import  
     def generate_cad_visual(self):
@@ -5451,7 +6343,7 @@ _____________________________________________________
         self.text_box['yscrollcommand'] = self.text_box_scrollbar.set
         
         # Setup frame-based components now that text_box exists
-        self.setup_cli_and_search_components()
+        # Search Console removed - now only VTK controls in middle area
         self.setup_tabbed_terminal()
         self.setup_status_bar()    
 

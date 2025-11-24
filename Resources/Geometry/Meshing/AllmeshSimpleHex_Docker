@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Docker-based Simple Hex mesh script for macOS (ARM64 compatible)
+# Uses blockMesh only for simple structured hexahedral meshes
+# Run from this directory
+cd "${0%/*}" || exit 1
+
+# Set the number of utilized cores
+export OMP_NUM_THREADS=4
+
+# Get the current directory (case directory)
+CASE_DIR="$(pwd)"
+
+# ARM64-compatible OpenFOAM image
+OPENFOAM_IMAGE="openfoam/openfoam11-paraview510:latest"
+
+echo "__________________________________________________________________"
+echo
+echo "Starting Docker-based simple hex meshing with OpenFOAM (ARM64)..."
+echo "Case directory: $CASE_DIR"
+echo
+
+# Remove old mesh files
+echo "Cleaning up old mesh files..."
+rm -f log.blockMesh 
+rm -f log.checkMesh 
+rm -f log.foamToVTK
+rm -f log.paraFoam
+rm -rf constant/polyMesh 
+rm -rf VTK
+
+echo "Simple hexahedral mesh is being crafted using Docker (blockMesh only), please hang on..." 
+echo
+
+# Create mesh using blockMesh only
+echo "Creating structured hex mesh with blockMesh..."
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && blockMesh" > log.blockMesh 2>&1
+
+# Check if meshing was successful
+if [ $? -eq 0 ]; then
+    echo "Simple hexahedral mesh is successfully generated!"
+else
+    echo "Error: blockMesh failed. Check log.blockMesh for details."
+    exit 1
+fi
+
+# Extract ClockTime value from log.blockMesh
+clock_time=$(grep "ClockTime =" log.blockMesh | tail -1 | awk '{print $NF}' | tr -d '[:alpha:]' 2>/dev/null || echo "2")
+sleep_time=$((clock_time + 1))
+if [ $sleep_time -le 1 ]; then
+    sleep_time=3
+fi
+
+sleep $sleep_time
+
+# Convert mesh to VTK format using Docker
+echo "Converting mesh to VTK format..."
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && foamToVTK" > log.foamToVTK 2>&1
+
+echo "Checking mesh quality..."
+
+# Check mesh quality using Docker
+docker run --platform linux/amd64 --entrypoint="" --rm -v "$CASE_DIR:/case" -w /case \
+    "$OPENFOAM_IMAGE" \
+    bash -c "source /opt/openfoam11/etc/bashrc && checkMesh" > log.checkMesh 2>&1
+
+echo "Mesh quality checked! Click on 'Load mesh quality' to view the report."
+echo
+echo "__________________________________________________________________"

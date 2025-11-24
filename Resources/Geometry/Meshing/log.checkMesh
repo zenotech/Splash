@@ -1,18 +1,99 @@
-WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
-Welcome to the OpenFOAM v11 Docker Image
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  11
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 11-e1fc8c682ae6
+Exec   : checkMesh
+Date   : Nov 24 2025
+Time   : 08:58:28
+Host   : "4087ae53f13e"
+PID    : 1
+I/O    : uncollated
+Case   : //case
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
 
-Provides bash terminal with OpenFOAM 11 and ParaView 5.10.1
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
 
-Produced and maintained by CFD Direct (https://cfd.direct), on behalf of the
-OpenFOAM Foundation (https://openfoam.org), the owner and distributor of
-OpenFOAM as free, open source software under the General Public Licence v3.
+Create polyMesh for time = 0
 
-Further Resources:
-* OpenFOAM User Guide:      https://cfd.direct/openfoam/user-guide
-* C++ Source Guide:         https://cpp.openfoam.org
-* OpenFOAM Training:        https://cfd.direct/openfoam-training
-* Running in the Cloud:     https://cfd.direct/cloud
-* Issue (Bug) Reporting:    https://bugs.openfoam.org
-* Subscribe to Newsletter:  https://cfd.direct/news
-* Contributors to OpenFOAM: https://openfoam.org/dev/contributors
+Time = 0s
+
+Mesh stats
+    points:           192658
+    faces:            519358
+    internal faces:   483743
+    cells:            164175
+    faces per cell:   6.10995
+    boundary patches: 4
+    point zones:      0
+    face zones:       0
+    cell zones:       0
+
+Overall number of cells of each type:
+    hexahedra:     152924
+    prisms:        1986
+    wedges:        0
+    pyramids:      0
+    tet wedges:    30
+    tetrahedra:    2
+    polyhedra:     9233
+    Breakdown of polyhedra by number of faces:
+        faces   number of cells
+            4   341
+            5   1223
+            6   2512
+            7   108
+            8   80
+            9   3234
+           10   26
+           11   84
+           12   1104
+           13   8
+           14   28
+           15   408
+           17   6
+           18   65
+           21   6
+
+Checking topology...
+    Boundary definition OK.
+    Cell to face addressing OK.
+    Point usage OK.
+    Upper triangular ordering OK.
+    Face vertices OK.
+    Number of regions: 1 (OK).
+
+Checking patch topology for multiply connected surfaces...
+                   Patch    Faces   Points                  Surface topology
+                   inlet     2500     2601  ok (non-closed singly connected)
+                  outlet     2500     2601  ok (non-closed singly connected)
+                   walls    10000    10200  ok (non-closed singly connected)
+                 CAD.stl    20615    22091      ok (closed singly connected)
+
+Checking geometry...
+    Overall domain bounding box (-0.971645 -0.189866 -0.129782) (0.79039 0.189866 0.181695)
+    Mesh has 3 geometric (non-empty/wedge) directions (1 1 1)
+    Mesh has 3 solution (non-empty) directions (1 1 1)
+    Boundary openness (-3.0645e-16 8.76711e-16 -1.35601e-16) OK.
+    Max cell openness = 3.90081e-16 OK.
+    Max aspect ratio = 26.5486 OK.
+    Minimum face area = 3.25326e-08. Maximum face area = 0.000281595.  Face area magnitudes OK.
+    Min volume = 1.76427e-10. Max volume = 1.73974e-06.  Total volume = 0.208256.  Cell volumes OK.
+    Mesh non-orthogonality Max: 65.0017 average: 13.5976
+    Non-orthogonality check OK.
+    Face pyramids OK.
+ ***Max skewness = 9.14108, 163 highly skew faces detected which may impair the quality of the results
+  <<Writing 163 skew faces to set skewFaces
+    Coupled point location match (average 0) OK.
+
+Failed 1 mesh checks.
+
+End
 

@@ -10,8 +10,8 @@ export OMP_NUM_THREADS=4
 # Get the current directory (case directory)
 CASE_DIR="$(pwd)"
 
-# Docker OpenFOAM image (ARM64 compatible)
-OPENFOAM_IMAGE="openfoam/openfoam11-paraview510:latest"
+# Docker OpenFOAM image with cfMesh
+OPENFOAM_IMAGE="fsys/openfoam4-paraview50-cfmesh:latest"
 
 echo "__________________________________________________________________"
 echo
@@ -31,10 +31,10 @@ rm -rf VTK
 echo "Mesh is being crafted using Docker, please hang on..." 
 echo
 
-# Create mesh using blockMesh in Docker container
-docker run --platform linux/amd64 --rm -v "$CASE_DIR:/case" -w /case \
+# Create mesh using cartesianMesh in Docker container
+docker run --rm -v "$CASE_DIR:/case" -w /case \
     "$OPENFOAM_IMAGE" \
-    timeout 300 bash -c ". /usr/lib/openfoam/openfoam2306/etc/bashrc && blockMesh" > log.cartesianMesh 2>&1
+    bash -c ". /opt/openfoam4/etc/bashrc && cartesianMesh" > log.cartesianMesh 2>&1
 
 # Check if meshing was successful
 if [ $? -eq 0 ]; then
@@ -57,14 +57,14 @@ sleep $sleep_time
 echo "Converting mesh to VTK format..."
 docker run --rm -v "$CASE_DIR:/case" -w /case \
     "$OPENFOAM_IMAGE" \
-    bash -c ". /usr/lib/openfoam/openfoam2306/etc/bashrc && foamToVTK" > log.foamToVTK 2>&1
+    bash -c ". /opt/openfoam4/etc/bashrc && foamToVTK" > log.foamToVTK 2>&1
 
 echo "Checking mesh quality..."
 
 # Check mesh quality using Docker
 docker run --rm -v "$CASE_DIR:/case" -w /case \
     "$OPENFOAM_IMAGE" \
-    bash -c ". /usr/lib/openfoam/openfoam2306/etc/bashrc && checkMesh" > log.checkMesh 2>&1
+    bash -c ". /opt/openfoam4/etc/bashrc && checkMesh" > log.checkMesh 2>&1
 
 echo "Mesh quality checked! Click on 'Load mesh quality' to view the report."
 echo

@@ -1,18 +1,43 @@
-WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
-Welcome to the OpenFOAM v11 Docker Image
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  11
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 11-e1fc8c682ae6
+Exec   : foamToVTK
+Date   : Nov 24 2025
+Time   : 08:58:25
+Host   : "53e5b615c23c"
+PID    : 1
+I/O    : uncollated
+Case   : //case
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
 
-Provides bash terminal with OpenFOAM 11 and ParaView 5.10.1
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
 
-Produced and maintained by CFD Direct (https://cfd.direct), on behalf of the
-OpenFOAM Foundation (https://openfoam.org), the owner and distributor of
-OpenFOAM as free, open source software under the General Public Licence v3.
+Create mesh for time = 0
 
-Further Resources:
-* OpenFOAM User Guide:      https://cfd.direct/openfoam/user-guide
-* C++ Source Guide:         https://cpp.openfoam.org
-* OpenFOAM Training:        https://cfd.direct/openfoam-training
-* Running in the Cloud:     https://cfd.direct/cloud
-* Issue (Bug) Reporting:    https://bugs.openfoam.org
-* Subscribe to Newsletter:  https://cfd.direct/news
-* Contributors to OpenFOAM: https://openfoam.org/dev/contributors
+Time: 0
+    volScalarFields            : cellLevel
+    pointScalarFields          : pointLevel
+
+    Internal  : "//case/VTK/case_0.vtk"
+    Original cells:164175 points:192658   Additional cells:130690  additional points:9233
+
+Combining patches:
+    patch 0 inlet
+    patch 1 outlet
+    patch 2 walls
+    patch 3 CAD.stl
+    Patch     : "//case/VTK/inlet/inlet_0.vtk"
+    Patch     : "//case/VTK/outlet/outlet_0.vtk"
+    Patch     : "//case/VTK/walls/walls_0.vtk"
+    Patch     : "//case/VTK/CAD.stl/CAD.stl_0.vtk"
+End
 

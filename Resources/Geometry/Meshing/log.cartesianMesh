@@ -1,18 +1,18 @@
 WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
-Welcome to the OpenFOAM v11 Docker Image
+Welcome to the OpenFOAM v4 Docker Image
 
-Provides bash terminal with OpenFOAM 11 and ParaView 5.10.1
+Provides bash terminal with OpenFOAM 4.1 and ParaView 5.0.1
 
-Produced and maintained by CFD Direct (https://cfd.direct), on behalf of the
-OpenFOAM Foundation (https://openfoam.org), the owner and distributor of
+Produced and maintained by CFD Direct (http://cfd.direct), on behalf of the
+OpenFOAM Foundation (http://openfoam.org), the owner and distributor of
 OpenFOAM as free, open source software under the General Public Licence v3.
 
 Further Resources:
-* OpenFOAM User Guide:      https://cfd.direct/openfoam/user-guide
-* C++ Source Guide:         https://cpp.openfoam.org
-* OpenFOAM Training:        https://cfd.direct/openfoam-training
-* Running in the Cloud:     https://cfd.direct/cloud
-* Issue (Bug) Reporting:    https://bugs.openfoam.org
-* Subscribe to Newsletter:  https://cfd.direct/news
-* Contributors to OpenFOAM: https://openfoam.org/dev/contributors
+* OpenFOAM User Guide:      http://cfd.direct/openfoam/user-guide
+* C++ Source Guide:         http://cpp.openfoam.org
+* OpenFOAM Training:        http://cfd.direct/openfoam-training
+* Running in the Cloud:     http://cfd.direct/cloud
+* Issue (Bug) Reporting:    http://bugs.openfoam.org
+* Subscribe to Newsletter:  http://cfd.direct/news
+* Contributors to OpenFOAM: http://openfoam.org/dev/contributors
 
